@@ -1,0 +1,8 @@
+{
+  "name": "School-Link Web App",
+  "description": "학교 업무 간소화를 위한 일정 관리 대시보드",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
