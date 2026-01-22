@@ -1,38 +1,41 @@
 
 import React, { useState } from 'react';
 import { Calendar as CalendarIcon, Plus, Settings as SettingsIcon, Users, User, LayoutGrid, ChevronLeft, ChevronRight, Bell, LogOut, Info } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { EventModal } from './EventModal.tsx';
 import { SettingsModal } from './SettingsModal.tsx';
 import { useEvents } from '../hooks/useEvents.ts';
 import { useAuth } from '../hooks/useAuth.ts';
-import { Visibility } from '../types.ts';
+import { Visibility, Event } from '../types.ts';
 
 export const WidgetMain: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [filter, setFilter] = useState<Visibility | 'all'>('all');
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { events } = useEvents();
   const { user, tenantInfo, logout } = useAuth();
 
-  // 달력 그리드를 위한 날짜 계산 (이전/다음 달 일부 포함하여 7의 배수 격자 생성)
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  // 달력 그리드를 위한 날짜 계산 (오늘(currentMonth)이 포함된 주부터 시작)
+  const calendarStart = startOfWeek(currentMonth, { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(addWeeks(calendarStart, 3), { weekStartsOn: 0 }); // 4주치 표시 (0~3주)
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const filteredEventsForSelectedDate = events.filter(e => {
     const matchesFilter = filter === 'all' || e.visibility === filter;
     const eventDate = new Date(e.startAt);
+    if (isNaN(eventDate.getTime())) return false;
     return matchesFilter && isSameDay(eventDate, selectedDate);
   });
 
   const getEventsForDay = (date: Date) => {
-    return events.filter(e => isSameDay(new Date(e.startAt), date));
+    return events.filter(e => {
+      const d = new Date(e.startAt);
+      return !isNaN(d.getTime()) && isSameDay(d, date);
+    });
   };
 
   return (
@@ -74,21 +77,26 @@ export const WidgetMain: React.FC = () => {
 
       <main className="flex-1 flex flex-col xl:flex-row p-6 gap-6 overflow-hidden">
         {/* 중앙 큰 달력 섹션 */}
-        <section className="flex-[3] flex flex-col bg-white rounded-[32px] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-hidden transition-all">
+        <section className="flex-[3] flex flex-col bg-white rounded-[32px] shadow-xl shadow-slate-200/40 border border-slate-100 overflow-y-auto transition-all custom-scrollbar">
           <div className="p-8 border-b flex flex-col md:flex-row items-center justify-between gap-6 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
             <div className="flex items-center gap-6">
               <h2 className="text-3xl font-black text-slate-800 tabular-nums">
-                {format(currentMonth, 'yyyy. MM', { locale: ko })}
+                {format(calendarStart, 'yyyy. MM', { locale: ko })}
+                {calendarStart.getMonth() !== calendarEnd.getMonth() &&
+                  <span className="text-xl text-slate-400 ml-2 font-bold">
+                    - {format(calendarEnd, 'MM', { locale: ko })}
+                  </span>
+                }
               </h2>
               <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-                <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-500">
+                <button onClick={() => setCurrentMonth(subWeeks(currentMonth, 4))} className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-500">
                   <ChevronLeft size={24} />
                 </button>
-                <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-500">
+                <button onClick={() => setCurrentMonth(addWeeks(currentMonth, 4))} className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-500">
                   <ChevronRight size={24} />
                 </button>
               </div>
-              <button 
+              <button
                 onClick={() => setCurrentMonth(new Date())}
                 className="text-xs font-bold text-indigo-600 px-4 py-2 hover:bg-indigo-50 rounded-xl transition-colors border border-indigo-100"
               >
@@ -101,9 +109,8 @@ export const WidgetMain: React.FC = () => {
                 <button
                   key={v}
                   onClick={() => setFilter(v)}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-                    filter === v ? 'bg-white text-indigo-600 shadow-md shadow-slate-200 ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'
-                  }`}
+                  className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${filter === v ? 'bg-white text-indigo-600 shadow-md shadow-slate-200 ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'
+                    }`}
                 >
                   {v === 'all' && <LayoutGrid size={14} />}
                   {v === 'school' && <Users size={14} />}
@@ -114,55 +121,68 @@ export const WidgetMain: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1 grid grid-cols-7 bg-slate-100/30">
-            {/* 요일 헤더 */}
+          {/* 요일 헤더 (별도 영역으로 분리하여 크기 고정 및 축소) */}
+          <div className="grid grid-cols-7 border-b bg-white">
             {['일', '월', '화', '수', '목', '금', '토'].map((day, i) => (
-              <div key={day} className={`py-4 text-center text-xs font-black uppercase tracking-widest border-b bg-white ${
-                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-400'
-              }`}>
+              <div key={day} className={`py-1 text-center text-[10px] font-black uppercase tracking-widest ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-400'
+                }`}>
                 {day}
               </div>
             ))}
+          </div>
+
+          <div
+            className="flex-1 grid grid-cols-7 bg-slate-100/30 min-h-[600px]"
+            style={{ gridTemplateRows: `repeat(${calendarDays.length / 7}, 1fr)` }}
+          >
 
             {/* 날짜 그리드 */}
             {calendarDays.map((day) => {
               const dayEvents = getEventsForDay(day);
               const isSelected = isSameDay(day, selectedDate);
               const isToday = isSameDay(day, new Date());
-              const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
               const hasSchoolEvents = dayEvents.some(e => e.visibility === 'school');
+
+              const isEvenMonth = day.getMonth() % 2 === 0;
+              const isFirstDay = day.getDate() === 1;
 
               return (
                 <button
                   key={day.toISOString()}
                   onClick={() => setSelectedDate(day)}
-                  className={`relative min-h-[100px] p-2 flex flex-col items-start gap-1 border-b border-r border-slate-100 group transition-all text-left ${
-                    isSelected ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/20 z-10' : 'bg-white hover:bg-slate-50'
-                  } ${!isCurrentMonth ? 'opacity-30' : ''}`}
+                  className={`relative p-2 flex flex-col items-start gap-1 border-b border-r border-slate-100 group transition-all text-left ${isSelected
+                    ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500/20 z-10'
+                    : (isEvenMonth ? 'bg-white hover:bg-indigo-50/20' : 'bg-orange-50/30 hover:bg-orange-50/50')
+                    }`}
                 >
                   <div className="w-full flex justify-between items-start">
-                    <span className={`text-sm font-black w-8 h-8 flex items-center justify-center rounded-xl transition-all ${
-                      isToday ? 'bg-red-500 text-white shadow-lg shadow-red-200' : 
-                      isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 
-                      'text-slate-700'
-                    }`}>
-                      {format(day, 'd')}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-sm font-black w-8 h-8 flex items-center justify-center rounded-xl transition-all ${isToday ? 'bg-red-500 text-white shadow-lg shadow-red-200' :
+                        isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' :
+                          'text-slate-700'
+                        }`}>
+                        {format(day, 'd')}
+                      </span>
+                      {isFirstDay && (
+                        <span className="text-xs font-black text-indigo-600 bg-white/80 px-2 py-0.5 rounded-md border border-indigo-100 shadow-sm z-20">
+                          {format(day, 'M')}월
+                        </span>
+                      )}
+                    </div>
                     {dayEvents.length > 0 && (
                       <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black px-1.5 py-0.5 rounded-md">
                         {dayEvents.length}
                       </span>
                     )}
                   </div>
-                  
+
                   {/* 일정이 있는 날짜의 시각적 요약 표시 */}
                   <div className="mt-2 w-full space-y-1 overflow-hidden">
                     {dayEvents.slice(0, 2).map(e => (
-                      <div 
-                        key={e.id} 
-                        className={`text-[9px] font-bold px-2 py-1 rounded-lg truncate ${
-                          e.visibility === 'school' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
-                        }`}
+                      <div
+                        key={e.id}
+                        className={`text-[9px] font-bold px-2 py-1 rounded-lg truncate ${e.visibility === 'school' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-700'
+                          }`}
                       >
                         {e.title}
                       </div>
@@ -203,18 +223,20 @@ export const WidgetMain: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-white">
             {filteredEventsForSelectedDate.length > 0 ? (
               filteredEventsForSelectedDate.map(event => (
-                <div 
+                <div
                   key={event.id}
-                  className={`group p-6 rounded-3xl border-2 transition-all hover:scale-[1.02] cursor-pointer shadow-sm ${
-                    event.visibility === 'school' 
-                      ? 'bg-amber-50/50 border-amber-100 hover:border-amber-300' 
-                      : 'bg-indigo-50/20 border-slate-50 hover:border-indigo-200'
-                  }`}
+                  onClick={() => {
+                    setSelectedEvent(event);
+                    setIsEventModalOpen(true);
+                  }}
+                  className={`group p-6 rounded-3xl border-2 transition-all hover:scale-[1.02] cursor-pointer shadow-sm ${event.visibility === 'school'
+                    ? 'bg-amber-50/50 border-amber-100 hover:border-amber-300'
+                    : 'bg-indigo-50/20 border-slate-50 hover:border-indigo-200'
+                    }`}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      event.visibility === 'school' ? 'bg-amber-200 text-amber-800' : 'bg-indigo-600 text-white'
-                    }`}>
+                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${event.visibility === 'school' ? 'bg-amber-200 text-amber-800' : 'bg-indigo-600 text-white'
+                      }`}>
                       {event.visibility === 'school' ? '전직원 공유' : '개인 메모'}
                     </div>
                     <span className="text-slate-400 text-xs font-black bg-slate-100 px-3 py-1 rounded-xl">
@@ -222,7 +244,7 @@ export const WidgetMain: React.FC = () => {
                     </span>
                   </div>
                   <h4 className="text-xl font-black text-slate-800 mb-3 group-hover:text-indigo-600 transition-colors">{event.title}</h4>
-                  
+
                   <div className="flex flex-wrap gap-3">
                     {event.location && (
                       <div className="flex items-center gap-2 text-slate-500 text-xs font-bold bg-white/50 px-3 py-1.5 rounded-xl border border-slate-100">
@@ -257,20 +279,24 @@ export const WidgetMain: React.FC = () => {
           </div>
 
           <div className="p-8 bg-slate-50/80 border-t backdrop-blur-md">
-             <button 
-                onClick={() => setIsEventModalOpen(true)}
-                className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-4 active:scale-95 group"
-              >
-                <Plus size={28} className="group-hover:rotate-90 transition-transform" /> 일정 등록하기
-              </button>
+            <button
+              onClick={() => {
+                setSelectedEvent(null);
+                setIsEventModalOpen(true);
+              }}
+              className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-4 active:scale-95 group"
+            >
+              <Plus size={28} className="group-hover:rotate-90 transition-transform" /> 일정 등록하기
+            </button>
           </div>
         </section>
       </main>
 
-      <EventModal 
-        isOpen={isEventModalOpen} 
-        onClose={() => setIsEventModalOpen(false)} 
+      <EventModal
+        isOpen={isEventModalOpen}
+        onClose={() => setIsEventModalOpen(false)}
         initialDate={selectedDate}
+        initialEvent={selectedEvent}
       />
       <SettingsModal
         isOpen={isSettingsOpen}

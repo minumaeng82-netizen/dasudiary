@@ -9,7 +9,17 @@ export const useEvents = () => {
   useEffect(() => {
     const cached = localStorage.getItem('events_cache');
     if (cached) {
-      setEvents(JSON.parse(cached));
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setEvents(parsed);
+        } else {
+          setEvents([]);
+        }
+      } catch (e) {
+        console.error("Failed to parse events cache", e);
+        setEvents([]);
+      }
     }
     setLoading(false);
 
@@ -43,5 +53,19 @@ export const useEvents = () => {
     return newEvent;
   };
 
-  return { events, loading, addEvent };
+  const updateEvent = async (id: string, data: Partial<Event>) => {
+    const updated = events.map(event =>
+      event.id === id ? { ...event, ...data, updatedAt: new Date().toISOString() } : event
+    );
+    setEvents(updated);
+    localStorage.setItem('events_cache', JSON.stringify(updated));
+  };
+
+  const deleteEvent = async (id: string) => {
+    const updated = events.filter(event => event.id !== id);
+    setEvents(updated);
+    localStorage.setItem('events_cache', JSON.stringify(updated));
+  };
+
+  return { events, loading, addEvent, updateEvent, deleteEvent };
 };

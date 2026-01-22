@@ -1,6 +1,6 @@
 
 export type Visibility = 'private' | 'school';
-export type Category = 'meeting' | 'event' | 'deadline' | 'trip' | 'etc';
+export type Category = 'meeting' | 'event' | 'deadline' | 'trip' | 'etc' | 'education' | 'official' | 'service';
 
 export interface Event {
   id: string;
